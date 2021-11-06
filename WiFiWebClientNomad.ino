@@ -40,7 +40,7 @@ float g_long = 0;
 unsigned long g_epoch_time = stamp.timestamp(21,11,5,5,0,0); //timestamp paramaters order is (year, month, day, hour, minute, second)
 float g_pm_sensor_reading = 0.0;
 float g_temp = 0.0;
-float g_hum = 0.0;
+int g_hum = 0;
 
 // #define DATA_PIN A7
 // DHT_Unified dht(DATA_PIN, DHT22);
