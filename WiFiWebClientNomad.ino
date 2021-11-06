@@ -1,5 +1,6 @@
 /*
-  Nomad
+  Nomad - Uses Adafruit m0 feather board and wings for wifi and gps modules. DHT sensor with analogue.
+          Sps30 sensor uses the i2c protocol. 
  */
 
 
@@ -10,9 +11,7 @@
 #include <Adafruit_GPS.h>
 #include "timestamp32bits.h"
 #include <sps30.h>
-// #include <Adafruit_Sensor.h>
-// #include <DHT.h>
-// #include <DHT_U.h>
+#include <DHT.h>
 
 #define GPSSerial Serial1
 
@@ -24,7 +23,6 @@ int keyIndex = 0;            // your network key Index number (needed only for W
 int status = WL_IDLE_STATUS;
 // if you don't want to use DNS (and reduce your sketch size)
 // use the numeric IP instead of the name for the server:
-//IPAddress server(216,239,36,54);  // numeric IP for Google (no DNS) 216.239.36.54
 char server[] = "us-central1-little-deuce-coupe.cloudfunctions.net";    // name address for Google (using DNS)
 // Initialize the Ethernet client library
 // with the IP address and port of the server
@@ -42,8 +40,8 @@ float g_pm_sensor_reading = 0.0;
 float g_temp = 0.0;
 int g_hum = 0;
 
-// #define DATA_PIN A7
-// DHT_Unified dht(DATA_PIN, DHT22);
+#define DATA_PIN A5
+DHT dht(DATA_PIN, DHT22);
 
 void setup() {
   //Initialize serial and wait for port to open:
@@ -54,7 +52,7 @@ void setup() {
     ; // wait for serial port to connect. Needed for native USB port only
   }
 
-  // dht.begin();
+  dht.begin();
 
   // check for the presence of the shield:
   if (WiFi.status() == WL_NO_SHIELD) {
@@ -157,7 +155,7 @@ void gpsLoop()
         
         g_epoch_time = stamp.timestamp(GPS.year,GPS.month,GPS.day,GPS.hour, GPS.minute, GPS.seconds); //CONVERT TO EPOCHTIME FOR DB
         spsLoop();
-        //dhtLoop();
+        dhtLoop();
         postLoop();
         printGpsWaitingMsg = false;
       }
@@ -176,20 +174,16 @@ void gpsLoop()
   }
 }
 
-// void dhtLoop()
-// {
-//   sensors_event_t event;
-//   dht.temperature().getEvent(&event);
-//   g_temp = event.temperature;
+void dhtLoop()
+{
+  g_temp = dht.readTemperature();
+  g_hum = dht.readHumidity();
 
-//   dht.humidity().getEvent(&event);
-//   g_hum = event.relative_humidity;
+  if (isnan(g_temp)) g_temp = 0;
+  if (isnan(g_hum)) g_hum = 0;
 
-//   if (isnan(g_temp)) g_temp = 0;
-//   if (isnan(g_hum)) g_hum = 0;
-
-//   Serial.print("Temp: "); Serial.print(g_temp); Serial.println("C");Serial.print(" Humidity: "); Serial.print(g_hum); Serial.println("%");
-// }
+  Serial.print("Temp: "); Serial.print(g_temp); Serial.println("C");Serial.print(" Humidity: "); Serial.print(g_hum); Serial.println("%");
+}
 
 String deviceIdTitle = "deviceId=nomad-9999-00000005";
 String humidtyTitle = "&humidity=";
