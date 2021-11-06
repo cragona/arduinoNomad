@@ -1,7 +1,9 @@
 # arduinoNomad
 Nomad hackathon 2021
 
-Press the A button on the LED Screen to continue
+Press the A button on the LED Screen to continue.
+
+Update arduino_secrets.h with the wifi before building.
 
 You will need to get the following libraries through the Library Manager in the IDE:
 * WiFi101
