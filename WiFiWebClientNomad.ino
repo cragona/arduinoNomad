@@ -10,6 +10,9 @@
 #include <Adafruit_GPS.h>
 #include "timestamp32bits.h"
 #include <sps30.h>
+// #include <Adafruit_Sensor.h>
+// #include <DHT.h>
+// #include <DHT_U.h>
 
 #define GPSSerial Serial1
 
@@ -36,6 +39,11 @@ float g_lat = 0;
 float g_long = 0;
 unsigned long g_epoch_time = stamp.timestamp(21,11,5,5,0,0); //timestamp paramaters order is (year, month, day, hour, minute, second)
 float g_pm_sensor_reading = 0.0;
+float g_temp = 0.0;
+float g_hum = 0.0;
+
+// #define DATA_PIN A7
+// DHT_Unified dht(DATA_PIN, DHT22);
 
 void setup() {
   //Initialize serial and wait for port to open:
@@ -45,6 +53,8 @@ void setup() {
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  // dht.begin();
 
   // check for the presence of the shield:
   if (WiFi.status() == WL_NO_SHIELD) {
@@ -124,7 +134,7 @@ void gpsLoop()
   {
     if (!printGpsWaitingMsg)
     {
-      Serial.print("Gps Read Begin");
+      Serial.print("Gps Reading");
       printGpsWaitingMsg = true;
     }
     // a tricky thing here is if we print the NMEA sentence, or data
@@ -140,21 +150,14 @@ void gpsLoop()
     {
       if (GPS.fix) 
       {
-        Serial.print("\nTime: ");
-        if (GPS.hour < 10) { Serial.print('0'); }
-        Serial.print(GPS.hour, DEC); Serial.print(':');
-        if (GPS.minute < 10) { Serial.print('0'); }
-        Serial.print(GPS.minute, DEC); Serial.print(':');
-        if (GPS.seconds < 10) { Serial.print('0'); }
-        Serial.print(GPS.seconds, DEC); Serial.print('.');
-        
-        Serial.print("Latitude: "); Serial.print(GPS.latitudeDegrees); 
+        Serial.print("\nLatitude: "); Serial.print(GPS.latitudeDegrees); 
         Serial.print(" Longitude: "); Serial.println(GPS.longitudeDegrees); 
         g_lat = GPS.latitudeDegrees;
         g_long = GPS.longitudeDegrees;
         
         g_epoch_time = stamp.timestamp(GPS.year,GPS.month,GPS.day,GPS.hour, GPS.minute, GPS.seconds); //CONVERT TO EPOCHTIME FOR DB
         spsLoop();
+        //dhtLoop();
         postLoop();
         printGpsWaitingMsg = false;
       }
@@ -165,7 +168,7 @@ void gpsLoop()
 
         if (dotWaitingCounter > 50)
         {
-          Serial.println(); 
+          Serial.print("\n"); 
           dotWaitingCounter = 0;
         }
       }
@@ -173,17 +176,32 @@ void gpsLoop()
   }
 }
 
+// void dhtLoop()
+// {
+//   sensors_event_t event;
+//   dht.temperature().getEvent(&event);
+//   g_temp = event.temperature;
+
+//   dht.humidity().getEvent(&event);
+//   g_hum = event.relative_humidity;
+
+//   if (isnan(g_temp)) g_temp = 0;
+//   if (isnan(g_hum)) g_hum = 0;
+
+//   Serial.print("Temp: "); Serial.print(g_temp); Serial.println("C");Serial.print(" Humidity: "); Serial.print(g_hum); Serial.println("%");
+// }
+
 String deviceIdTitle = "deviceId=nomad-9999-00000005";
-String humidtyTitle = "&humidity=1";
+String humidtyTitle = "&humidity=";
 String latitudeTitle = "&latitude=";
 String longitudeTitle = "&longitude=";
 String pmTitle = "&pm2x5Mass=";
-String tempTitle = "&temperature=1";
+String tempTitle = "&temperature=";
 String timestampTitle = "&timestamp=";
 
 void postLoop()
 {
-  String postData = deviceIdTitle+humidtyTitle+latitudeTitle+String(g_lat)+longitudeTitle+String(g_long)+pmTitle+String(g_pm_sensor_reading)+tempTitle+timestampTitle+String(g_epoch_time);
+  String postData = deviceIdTitle+humidtyTitle+String(g_hum)+latitudeTitle+String(g_lat)+longitudeTitle+String(g_long)+pmTitle+String(g_pm_sensor_reading)+tempTitle+String(g_temp)+timestampTitle+String(g_epoch_time);
   Serial.println("\nStarting connection to server...");
   Serial.print("query: "); Serial.println(postData);
   // if you get a connection, report back via serial:
