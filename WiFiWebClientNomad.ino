@@ -7,13 +7,42 @@
 #include <SPI.h>
 #include <WiFi101.h>
 #include "arduino_secrets.h" 
-#include <ArduinoJson.h>
 #include <Adafruit_GPS.h>
 #include "timestamp32bits.h"
 #include <sps30.h>
 #include <DHT.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #define GPSSerial Serial1
+
+// OLED FeatherWing buttons map to different pins depending on board:
+#if defined(ESP8266)
+  #define BUTTON_A  0
+  #define BUTTON_B 16
+  #define BUTTON_C  2
+#elif defined(ESP32)
+  #define BUTTON_A 15
+  #define BUTTON_B 32
+  #define BUTTON_C 14
+#elif defined(ARDUINO_STM32_FEATHER)
+  #define BUTTON_A PA15
+  #define BUTTON_B PC7
+  #define BUTTON_C PC5
+#elif defined(TEENSYDUINO)
+  #define BUTTON_A  4
+  #define BUTTON_B  3
+  #define BUTTON_C  8
+#elif defined(ARDUINO_FEATHER52832)
+  #define BUTTON_A 31
+  #define BUTTON_B 30
+  #define BUTTON_C 27
+#else // 32u4, M0, M4, nrf52840 and 328p
+  #define BUTTON_A  9
+  #define BUTTON_B  6
+  #define BUTTON_C  5
+#endif
 
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 char ssid[] = SECRET_SSID;        // your network SSID (name)
@@ -32,6 +61,7 @@ Adafruit_GPS GPS(&GPSSerial);
 uint32_t timer = millis();
 uint32_t delay_timer = 10000;
 timestamp32bits stamp = timestamp32bits();
+Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
 
 float g_lat = 0;
 float g_long = 0;
@@ -51,27 +81,47 @@ void setup() {
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-
+  pinMode(BUTTON_A, INPUT_PULLUP);
   dht.begin();
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
+  display.display();
+  display.startscrollleft(0x00, 0x0F);
+  while (digitalRead(BUTTON_A)); //stay till A is pressed
+  display.stopscroll();
+  // Clear the buffer.
+  display.clearDisplay();
+  display.display();
+
+  // set display text
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
 
   // check for the presence of the shield:
   if (WiFi.status() == WL_NO_SHIELD) {
     Serial.println("WiFi shield not present");
+    display.print("WiFi shield not present");
     // don't continue:
     while (true);
   }
 
   // attempt to connect to WiFi network:
+  display.println("Wifi: Connecting");
+  display.display(); // actually display all of the above
   while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
+    Serial.print("Connecting to SSID: ");
     Serial.println(ssid);
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
     status = WiFi.begin(ssid, pass);
-
     // wait 10 seconds for connection:
     delay(delay_timer);  
   }
-  Serial.println("Connected to wifi");
+    // Clear the buffer.
+  display.clearDisplay();
+  display.setCursor(0,0);
+  Serial.println("Connected to wifi!");
+  display.println("Wifi: Connected"); drawWifiBars();
+  display.display(); // actually display all of the above
   printWiFiStatus();
 
   gpsSetup();
@@ -88,6 +138,11 @@ void gpsSetup()
 
 void spsSetup()
 {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("Wifi: Connected"); drawWifiBars();
+  display.println("SPS sensor setup...");
+  display.display();
   Serial.println("SPS sensor setup...\n");
   int16_t ret;
   uint8_t auto_clean_days = 4;
@@ -99,6 +154,12 @@ void spsSetup()
 
   while (sps30_probe() != 0) {
     Serial.print("SPS sensor probing failed\n");
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("Wifi: Connected");
+    display.println("SPS sensor probing failed");
+    drawWifiBars();
+    display.display();
     delay(500);
   }
 
@@ -116,6 +177,11 @@ void spsSetup()
   else
   {
     Serial.println("...SPS sensor started\n");
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("Wifi: Connected"); drawWifiBars();
+    display.println("...SPS sensor started");
+    display.display();
   }
 
   delay(1000);
@@ -132,13 +198,16 @@ void gpsLoop()
   {
     if (!printGpsWaitingMsg)
     {
-      Serial.print("Gps Reading");
+      Serial.print("Gps Searching");
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.print("Gps Searching"); drawWifiBars();
+      display.display();
       printGpsWaitingMsg = true;
     }
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences!
-    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+
     GPS.lastNMEA(); // this also sets the newNMEAreceived() flag to false
+
     if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
     {
       return; // we can fail to parse a sentence in which case we should just wait for another
@@ -156,6 +225,17 @@ void gpsLoop()
         g_epoch_time = stamp.timestamp(GPS.year,GPS.month,GPS.day,GPS.hour, GPS.minute, GPS.seconds); //CONVERT TO EPOCHTIME FOR DB
         spsLoop();
         dhtLoop();
+        
+        //update screen after sensor readings
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0,0); drawWifiBars();
+        display.print("Lat: "); display.println(GPS.latitudeDegrees); //line 2
+        display.print("Long: "); display.println(GPS.longitudeDegrees); 
+        display.print("Temp: "); display.print(g_temp); display.print("C"); 
+        display.print(" RH: "); display.print(g_hum); display.println("%"); 
+        display.print("PM: "); display.print(g_pm_sensor_reading); display.print("ug/m3");
+        display.display();
         postLoop();
         printGpsWaitingMsg = false;
       }
@@ -163,7 +243,6 @@ void gpsLoop()
       {
         Serial.print("."); 
         dotWaitingCounter++;
-
         if (dotWaitingCounter > 50)
         {
           Serial.print("\n"); 
@@ -185,6 +264,7 @@ void dhtLoop()
   Serial.print("Temp: "); Serial.print(g_temp); Serial.println("C");Serial.print(" Humidity: "); Serial.print(g_hum); Serial.println("%");
 }
 
+// do not modify this. This is the protocal set up to pass the data to firestore
 String deviceIdTitle = "deviceId=nomad-9999-00000005";
 String humidtyTitle = "&humidity=";
 String latitudeTitle = "&latitude=";
@@ -202,7 +282,7 @@ void postLoop()
   if (client.connectSSL(server, 443)) {
     Serial.println("connected to server");
     //Make a HTTP request:
-    client.println("POST /telemetry HTTP/1.1"); ///tinyFittings/index.php HTTP/1.1
+    client.println("POST /telemetry HTTP/1.1"); 
     client.print("Host: "); client.println(server);
     client.println("Content-Type: application/x-www-form-urlencoded");
     client.println("Connection: close");
@@ -211,7 +291,7 @@ void postLoop()
     client.println(postData);
   }
 
-  // // if there are incoming bytes available
+  // // if there are incoming bytes available, this is for get
   // // from the server, read them and print them:
   // while (client.available()) {
   //   char c = client.read();
@@ -219,20 +299,72 @@ void postLoop()
   // }
 
   // if the server's disconnected, stop the client:
-  if (!client.connected()) {
+  if (!client.connected()) 
+  {
     Serial.println();
-    //Serial.println("disconnecting from server.");
     client.stop();
-
-    // // do nothing forevermore:
-    // while (true);
   }
 
   delay(1000);
 }
 
-void loop() {
+void loop() 
+{
   gpsLoop();
+  drawWifiBars();
+}
+
+void drawWifiBars()
+{
+  long rssi = WiFi.RSSI();
+  if (rssi >= -55) 
+  { 
+    display.fillRect(102,7,4,1, SSD1306_WHITE);
+    display.fillRect(107,6,4,2, SSD1306_WHITE);
+    display.fillRect(112,4,4,4, SSD1306_WHITE);
+    display.fillRect(117,2,4,6, SSD1306_WHITE);
+    display.fillRect(122,0,4,8, SSD1306_WHITE);
+  } 
+  else if (rssi < -55 & rssi > -65) 
+  {
+    display.fillRect(102,7,4,1, SSD1306_WHITE);
+    display.fillRect(107,6,4,2, SSD1306_WHITE);
+    display.fillRect(112,4,4,4, SSD1306_WHITE);
+    display.fillRect(117,2,4,6, SSD1306_WHITE);
+    display.drawRect(122,0,4,8, SSD1306_WHITE);
+  } 
+  else if (rssi < -65 & rssi > -75) 
+  {
+    display.fillRect(102,8,4,1, SSD1306_WHITE);
+    display.fillRect(107,6,4,2, SSD1306_WHITE);
+    display.fillRect(112,4,4,4, SSD1306_WHITE);
+    display.drawRect(117,2,2,6, SSD1306_WHITE);
+    display.drawRect(122,0,4,8, SSD1306_WHITE);
+  }
+  else if (rssi < -75 & rssi > -85) 
+  {
+    display.fillRect(102,8,4,1, SSD1306_WHITE);
+    display.fillRect(107,6,4,2, SSD1306_WHITE);
+    display.drawRect(112,4,4,4, SSD1306_WHITE);
+    display.drawRect(117,2,4,6, SSD1306_WHITE);
+    display.drawRect(122,0,4,8, SSD1306_WHITE);
+  } 
+  else if (rssi < -85 & rssi > -96) 
+  {
+    display.fillRect(102,8,4,1, SSD1306_WHITE);
+    display.drawRect(107,6,4,2, SSD1306_WHITE);
+    display.drawRect(112,4,4,4, SSD1306_WHITE);
+    display.drawRect(117,2,4,6, SSD1306_WHITE);
+    display.drawRect(122,0,4,8, SSD1306_WHITE);
+  } 
+  else 
+  {
+    display.drawRect(102,8,4,1, SSD1306_WHITE);
+    display.drawRect(107,6,4,2, SSD1306_WHITE);
+    display.drawRect(112,4,4,4, SSD1306_WHITE);
+    display.drawRect(117,2,4,6, SSD1306_WHITE);
+    display.drawRect(122,0,4,8, SSD1306_WHITE);  
+  }
 }
 
 void printWiFiStatus() 
@@ -286,9 +418,6 @@ void spsLoop()
     g_pm_sensor_reading = m.mc_2p5;
   }
 }
-
-
-
 
 
 
