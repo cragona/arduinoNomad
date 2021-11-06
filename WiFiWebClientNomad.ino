@@ -86,7 +86,7 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
   display.display();
   display.startscrollleft(0x00, 0x0F);
-  while (digitalRead(BUTTON_A)); //stay till A is pressed
+  delay(3000);
   display.stopscroll();
   // Clear the buffer.
   display.clearDisplay();
@@ -196,16 +196,6 @@ void gpsLoop()
 
   if (GPS.newNMEAreceived()) 
   {
-    if (!printGpsWaitingMsg)
-    {
-      Serial.print("Gps Searching");
-      display.clearDisplay();
-      display.setCursor(0,0);
-      display.print("Gps Searching"); drawWifiBars();
-      display.display();
-      printGpsWaitingMsg = true;
-    }
-
     GPS.lastNMEA(); // this also sets the newNMEAreceived() flag to false
 
     if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
@@ -228,7 +218,6 @@ void gpsLoop()
         
         //update screen after sensor readings
         display.clearDisplay();
-        display.setTextSize(1);
         display.setCursor(0,0); drawWifiBars();
         display.print("Lat: "); display.println(GPS.latitudeDegrees); //line 2
         display.print("Long: "); display.println(GPS.longitudeDegrees); 
@@ -241,6 +230,15 @@ void gpsLoop()
       }
       else
       {
+        if (!printGpsWaitingMsg)
+        {
+          Serial.print("Gps Searching");
+          display.clearDisplay();
+          display.setCursor(0,0);
+          display.print("Gps Searching"); drawWifiBars();
+          display.display();
+          printGpsWaitingMsg = true;
+        }
         Serial.print("."); 
         dotWaitingCounter++;
         if (dotWaitingCounter > 50)
