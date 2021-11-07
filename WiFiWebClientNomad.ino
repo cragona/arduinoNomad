@@ -52,7 +52,9 @@ int keyIndex = 0;            // your network key Index number (needed only for W
 int status = WL_IDLE_STATUS;
 // if you don't want to use DNS (and reduce your sketch size)
 // use the numeric IP instead of the name for the server:
-char server[] = "us-central1-little-deuce-coupe.cloudfunctions.net";    // name address for Google (using DNS)
+//char server[] = "us-central1-little-deuce-coupe.cloudfunctions.net";    // name address for Google (using DNS)
+IPAddress server(216,239,36,54); 
+
 // Initialize the Ethernet client library
 // with the IP address and port of the server
 // that you want to connect to (port 80 is default for HTTP):
@@ -70,7 +72,7 @@ float g_pm_sensor_reading = 0.0;
 float g_temp = 0.0;
 int g_hum = 0;
 
-#define DATA_PIN A5
+#define DATA_PIN 12
 DHT dht(DATA_PIN, DHT22);
 
 void setup() {
@@ -78,15 +80,16 @@ void setup() {
   WiFi.setPins(8,7,4,2);
   Serial.begin(115200);
   
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
+//  while (!Serial) {
+//    ; // wait for serial port to connect. Needed for native USB port only
+//  }
   pinMode(BUTTON_A, INPUT_PULLUP);
   dht.begin();
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
   display.display();
   display.startscrollleft(0x00, 0x0F);
   delay(3000);
+  //hile (digitalRead(BUTTON_A)); //stay till A is pressed
   display.stopscroll();
   // Clear the buffer.
   display.clearDisplay();
@@ -207,10 +210,12 @@ void gpsLoop()
     {
       if (GPS.fix) 
       {
-        Serial.print("\nLatitude: "); Serial.print(GPS.latitudeDegrees); 
-        Serial.print(" Longitude: "); Serial.println(GPS.longitudeDegrees); 
         g_lat = GPS.latitudeDegrees;
         g_long = GPS.longitudeDegrees;
+        
+        Serial.print("\nLatitude: "); Serial.print(g_lat, 4); 
+        Serial.print(" Longitude: "); Serial.println(g_long, 4); 
+
         
         g_epoch_time = stamp.timestamp(GPS.year,GPS.month,GPS.day,GPS.hour, GPS.minute, GPS.seconds); //CONVERT TO EPOCHTIME FOR DB
         spsLoop();
@@ -219,8 +224,8 @@ void gpsLoop()
         //update screen after sensor readings
         display.clearDisplay();
         display.setCursor(0,0); drawWifiBars();
-        display.print("Lat: "); display.println(GPS.latitudeDegrees); //line 2
-        display.print("Long: "); display.println(GPS.longitudeDegrees); 
+        display.print("Lat: "); display.println(g_lat, 4); //line 2
+        display.print("Long: "); display.println(g_long, 4); 
         display.print("Temp: "); display.print(g_temp); display.print("C"); 
         display.print(" RH: "); display.print(g_hum); display.println("%"); 
         display.print("PM: "); display.print(g_pm_sensor_reading); display.print("ug/m3");
@@ -273,11 +278,23 @@ String timestampTitle = "&timestamp=";
 
 void postLoop()
 {
-  String postData = deviceIdTitle+humidtyTitle+String(g_hum)+latitudeTitle+String(g_lat)+longitudeTitle+String(g_long)+pmTitle+String(g_pm_sensor_reading)+tempTitle+String(g_temp)+timestampTitle+String(g_epoch_time);
-  Serial.println("\nStarting connection to server...");
-  Serial.print("query: "); Serial.println(postData);
+  String postData = deviceIdTitle+humidtyTitle+String(g_hum)+latitudeTitle+String(g_lat, 4)+longitudeTitle+String(g_long, 4)+pmTitle+String(g_pm_sensor_reading)+tempTitle+String(g_temp)+timestampTitle+String(g_epoch_time);
+  Serial.println("\nAttempting to connect to server...");
+  printWiFiStatus();
+  
+  Serial.print("Server: "); Serial.println(server);
   // if you get a connection, report back via serial:
-  if (client.connectSSL(server, 443)) {
+  Serial.print("query: "); Serial.println(postData);
+  //bool attempt = client.connect(server, 80);  // could be 443 or 80
+  Serial.print("Connect Attempt: "); Serial.println(attempt);
+
+  while (!client.connected())
+  {
+    if (client.connect(server, 80))
+      break;
+  }
+//  if (attempt) //if client.connect doesn't work, try client.connectSSL instead
+//  {
     Serial.println("connected to server");
     //Make a HTTP request:
     client.println("POST /telemetry HTTP/1.1"); 
@@ -287,23 +304,23 @@ void postLoop()
     client.print("Content-Length: "); client.println(postData.length());
     client.println();
     client.println(postData);
-  }
+//  }
 
-  // // if there are incoming bytes available, this is for get
-  // // from the server, read them and print them:
-  // while (client.available()) {
-  //   char c = client.read();
-  //   Serial.write(c);
-  // }
+   // if there are incoming bytes available, this is for get
+   // from the server, read them and print them:
+//   while (client.available()) {
+//     char c = client.read();
+//     Serial.write(c);
+//   }
 
   // if the server's disconnected, stop the client:
   if (!client.connected()) 
   {
-    Serial.println();
+    Serial.println("Client stop");
     client.stop();
   }
 
-  delay(1000);
+  delay(10000);
 }
 
 void loop() 
@@ -381,6 +398,12 @@ void printWiFiStatus()
   Serial.print("signal strength (RSSI):");
   Serial.print(rssi);
   Serial.println(" dBm");
+
+  Serial.print("WiFi Status: ");
+  if (WiFi.status() != WL_CONNECTED) 
+    Serial.println("Not connected");
+  else
+    Serial.println("Connected");
 }
 
 void spsLoop() 
@@ -416,6 +439,3 @@ void spsLoop()
     g_pm_sensor_reading = m.mc_2p5;
   }
 }
-
-
-
